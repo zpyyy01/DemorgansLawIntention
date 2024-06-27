@@ -1,13 +1,24 @@
 package com.example;
 
+import com.github.weisj.jsvg.S;
 import com.intellij.codeInsight.intention.IntentionAction;
 import com.intellij.codeInsight.intention.PsiElementBaseIntentionAction;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
 import com.intellij.util.IncorrectOperationException;
+import com.intellij.psi.PsiPolyadicExpression;
+import com.intellij.psi.tree.IElementType;
+import com.siyeh.ig.PsiReplacementUtil;
+import com.siyeh.ig.psiutils.CommentTracker;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.Objects;
+
+import static com.siyeh.ig.psiutils.BoolUtils.isNegation;
+import static com.siyeh.ig.psiutils.BoolUtils.getNegated;
+
 
 public class DemorgansLawIntention extends PsiElementBaseIntentionAction implements IntentionAction {
 
@@ -15,10 +26,27 @@ public class DemorgansLawIntention extends PsiElementBaseIntentionAction impleme
         if (element == null) {
             return false;
         }
-
         if (element instanceof PsiJavaToken token) {
             if(token.getTokenType() == JavaTokenType.ANDAND || token.getTokenType() == JavaTokenType.OROR) {
-                return token.getParent() instanceof PsiBinaryExpression;
+                if (token.getParent() instanceof PsiPolyadicExpression psiPolyadicExpression) {
+                    /*System.out.println("isAvailable: " + token.getParent().getText());
+                    if(isNegated(psiPolyadicExpression)){
+                        System.out.println("Negated: " + psiPolyadicExpression.getText());
+                    }
+                    for(PsiElement child : token.getParent().getChildren()){
+                        System.out.println("child: " + child.getText());
+                        if(child instanceof PsiExpression){
+                            System.out.println("PsiExpression: " + child.getText());
+                        }
+
+                    }
+
+                    final IElementType tokenType = psiPolyadicExpression.getOperationTokenType();
+                    final boolean tokenTypeAndAnd = tokenType.equals(JavaTokenType.ANDAND);
+                    System.out.println("tokenTypeAndAnd: " + tokenTypeAndAnd);
+                    System.out.println("tokenType: " + tokenType);*/
+                    return true;
+                }
             }
         }
         return false;
@@ -26,22 +54,49 @@ public class DemorgansLawIntention extends PsiElementBaseIntentionAction impleme
 
     public void invoke(@NotNull Project project, Editor editor, @NotNull PsiElement element)
             throws IncorrectOperationException {
-        PsiBinaryExpression binaryExpression = (PsiBinaryExpression) element.getParent();
-        PsiElement newExpression = null;
-        if (element instanceof PsiJavaToken token) {
-            if(binaryExpression.getROperand()==null) return;
-            if (token.getTokenType() == JavaTokenType.ANDAND) {
-                newExpression = JavaPsiFacade.getElementFactory(project).createExpressionFromText(
-                        "!( !(" + binaryExpression.getLOperand().getText() + ") || !(" + binaryExpression.getROperand().getText() + ") )", binaryExpression);
-            } else if (token.getTokenType() == JavaTokenType.OROR) {
-                newExpression = JavaPsiFacade.getElementFactory(project).createExpressionFromText(
-                        "!( !(" + binaryExpression.getLOperand().getText() + ") && !(" + binaryExpression.getROperand().getText() + ") )", binaryExpression);
+        System.out.println("invoke: " + element.getText());
+
+        PsiPolyadicExpression psiPolyadicExpression = (PsiPolyadicExpression) element.getParent();
+        final IElementType tokenType = psiPolyadicExpression.getOperationTokenType();
+        final boolean tokenTypeAndAnd = tokenType.equals(JavaTokenType.ANDAND);
+        final String flippedToken = tokenTypeAndAnd ? "||" : "&&";
+        final StringBuilder result = new StringBuilder();
+        for(PsiElement child : psiPolyadicExpression.getChildren()){
+            System.out.println("child: " + child.getText());
+            if(child instanceof PsiJavaToken){
+               result.append(flippedToken);
+            }
+            else if(child instanceof PsiExpression){
+                result.append(convertLeafExpression((PsiExpression) child, tokenTypeAndAnd));
+            }
+            else {
+                result.append(child.getText());
             }
         }
-        if (newExpression != null) {
-            binaryExpression.replace(newExpression);
+        /*if(!isNegated(psiPolyadicExpression)){
+            result.insert(0, "!(");
+            result.append(")");
         }
+        else{
+            result.delete(0, 2);
+            result.delete(result.length()-1, result.length());
+        }*/
+        /*final PsiElementFactory factory = JavaPsiFacade.getElementFactory(project);
+        PsiExpression newExpression = factory.createExpressionFromText(result.toString(), psiPolyadicExpression);
+        System.out.println("newExpression: " + newExpression.getText());
+        System.out.println("negated: " + getNegated(newExpression));*/
+        //psiPolyadicExpression.replace(getNegated(newExpression));
+
     }
+
+    private String convertLeafExpression(PsiExpression expression, boolean isAnd){
+        /*System.out.println("convertLeafExpression: " + expression.getText());
+        System.out.println("isNegation:" + isNegation(expression));
+        System.out.println("getNegated:" + getNegated(expression));*/
+        return getNegated(expression).getText();
+    }
+
+
 
     @NotNull
     public String getText() {
